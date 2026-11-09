@@ -1,0 +1,2 @@
+# GTK, GI, Cairo, and psutil come from Ubuntu's compatible system packages.
+nvidia-ml-py==13.615.71

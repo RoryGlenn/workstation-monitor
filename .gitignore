@@ -1,0 +1,22 @@
+.venv/
+.native/
+.cache/
+__pycache__/
+*.pyc
+artifacts/
+
+# Local agent tooling, captures, credentials, settings, and diagnostics.
+.agents/
+docs/images/
+screenshots/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+preferences.json
+credentials*
+core
+core.*
