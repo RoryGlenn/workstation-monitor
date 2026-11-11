@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 
-DEFAULTS = {"interval": 1, "appearance": "system"}
+DEFAULTS = {"interval": 1, "appearance": "dark"}
 
 
 class Settings:

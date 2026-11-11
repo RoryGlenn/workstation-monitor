@@ -1,6 +1,6 @@
 # Workstation Monitor
 
-This project is a native, read-only Ubuntu performance monitor. The behavior contracts and implementation tasks live in `openspec/changes/build-local-task-manager/`.
+This project is a native, read-only Ubuntu performance monitor. The initial behavior contracts live in `openspec/changes/build-local-task-manager/`; the graphite dashboard design, requirements, progress, and validation live in `openspec/changes/adopt-sleek-dark-interface/`.
 
 - Use OpenSpec before development by default. Small, straightforward changes may skip it; substantial work must create or update a change with the goal, requirements, design, tasks, and validation criteria before coding. Read the change when resuming and keep progress and remaining work current.
 

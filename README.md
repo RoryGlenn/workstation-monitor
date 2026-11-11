@@ -26,7 +26,7 @@ sh scripts/setup.sh
 
 Setup downloads the pinned NVIDIA Python binding. If necessary, it extracts Ubuntu's Cairo/GI bridge into the project. It does not replace system Python. Setup needs internet access for public packages; runtime monitoring works offline. NVIDIA hardware and driver support are optional, and other views continue when GPU measurements are unavailable.
 
-**Overview** opens with resource cards and busy apps. CPU and transfer rates show **Measuring…** until two samples arrive. Select a card for details, or open **Apps** or **Processes** and search by name or PID.
+**Overview** opens with a wide CPU timeline, compact memory/GPU/storage panels, temperatures, network receive/send activity, and three busy app rows. New installations use the graphite-and-mint Dark appearance; Settings also offers Light and System. CPU and transfer rates show **Measuring…** until two samples arrive. Select a resource for details, choose **View all apps**, or open **Processes** and search by name or PID.
 
 ## Install the desktop launcher
 

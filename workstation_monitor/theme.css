@@ -1,0 +1,63 @@
+@define-color accent_bg_color @monitor_accent;
+@define-color accent_fg_color @monitor_bg;
+@define-color accent_color @monitor_accent;
+@define-color window_bg_color @monitor_bg;
+@define-color window_fg_color @monitor_text;
+@define-color view_bg_color @monitor_bg;
+@define-color view_fg_color @monitor_text;
+@define-color headerbar_bg_color @monitor_panel;
+@define-color headerbar_fg_color @monitor_text;
+@define-color card_bg_color @monitor_panel;
+@define-color card_fg_color @monitor_text;
+@define-color popover_bg_color @monitor_raised;
+@define-color popover_fg_color @monitor_text;
+
+.workstation-monitor { background: @monitor_bg; color: @monitor_text; }
+.workstation-monitor headerbar { background: @monitor_panel; box-shadow: none; border-bottom: 1px solid @monitor_border; }
+.brand { font-size: 17px; font-weight: 600; }
+.page-heading { font-size: 26px; font-weight: 700; }
+.monitor-sidebar { background: @monitor_bg; border-right: 1px solid @monitor_border; padding: 16px 8px; }
+.monitor-nav { padding: 11px 12px; margin-bottom: 6px; border-radius: 7px; border: 0; border-left: 3px solid transparent; box-shadow: none; }
+.monitor-nav:checked { background: @monitor_selection; border-left-color: @monitor_accent; color: @monitor_text; }
+.monitor-nav:hover { background: alpha(@monitor_text, .06); }
+.monitor-nav:checked:hover { background: @monitor_selection; }
+.monitor-nav label { font-size: 14px; }
+.monitor-panel { background: @monitor_panel; border: 1px solid @monitor_border; border-radius: 10px; box-shadow: none; }
+.monitor-panel-action { background: none; padding: 0; border: 0; border-radius: 10px; box-shadow: none; font-weight: 400; }
+.monitor-panel-action:hover { background: alpha(@monitor_accent, .035); }
+.panel-heading { font-size: 15px; font-weight: 600; }
+.metric-number { font-size: 30px; font-weight: 650; }
+.cpu-number { font-size: 38px; font-weight: 650; }
+.temperature-number { font-size: 27px; font-weight: 600; }
+.metric-unavailable { font-size: 15px; font-weight: 500; color: @monitor_muted; }
+.numeric { font-variant-numeric: tabular-nums; }
+.monitor-muted, .dim-label, .resource-note { color: @monitor_muted; }
+.monitor-caption { font-size: 11px; color: @monitor_muted; }
+.metric-state { font-size: 11px; color: @monitor_warning; }
+.capacity-bar trough { min-height: 6px; border-radius: 4px; background: @monitor_track; border: 0; }
+.capacity-bar progress { min-height: 6px; border-radius: 4px; background: @monitor_accent; border: 0; }
+.capacity-bar.warning progress { background: @monitor_warning; }
+.network-rate { font-size: 17px; font-weight: 600; }
+.receive { color: @monitor_accent; }
+.send { color: @monitor_secondary; }
+.temperature-action { padding: 0; border-radius: 6px; }
+.monitor-status { font-size: 12px; padding: 4px 9px; border-radius: 12px; background: @monitor_selection; color: @monitor_accent; }
+.monitor-status.warning { color: @monitor_warning; background: alpha(@monitor_warning, .1); }
+.monitor-banner { padding: 8px 14px; background: alpha(@monitor_warning, .10); color: @monitor_warning; border-bottom: 1px solid alpha(@monitor_warning, .25); }
+.monitor-footer { border-top: 1px solid @monitor_border; padding: 8px 16px; color: @monitor_muted; font-size: 11px; }
+.apps-heading-row { padding: 9px 12px; }
+.apps-column-heading { background: @monitor_raised; color: @monitor_muted; padding: 5px 12px; font-size: 11px; }
+.overview-app-row { min-height: 0; padding: 8px 12px; border-radius: 0; border-top: 1px solid alpha(@monitor_border, .65); }
+.overview-app-row:hover { background: alpha(@monitor_text, .04); }
+.overview-app-row label { font-size: 13px; font-weight: 400; }
+.overview-app-row image { color: @monitor_muted; }
+.overview-app-row .partial { color: @monitor_warning; }
+.monitor-link { font-size: 11px; padding: 2px 6px; color: @monitor_accent; }
+.resource-note { font-size: 12px; }
+.metric-card { padding: 0; border-radius: 10px; border: 1px solid @monitor_border; }
+.metric-action { padding: 0; }
+.metric-card.clickable:hover { outline: 1px solid alpha(@monitor_accent, .6); }
+.workstation-monitor treeview { background: @monitor_panel; color: @monitor_text; }
+.workstation-monitor treeview:selected { background: @monitor_selection; color: @monitor_text; }
+.workstation-monitor treeview header button { background: @monitor_raised; color: @monitor_muted; box-shadow: none; }
+.workstation-monitor button:focus-visible { outline: 2px solid @monitor_accent; outline-offset: -3px; }

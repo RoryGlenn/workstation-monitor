@@ -16,11 +16,17 @@ From the local graphical session:
 
 ```sh
 PYTHONPATH="$PWD:$PWD/tests" .venv/bin/python tests/native_flow.py
+PYTHONPATH="$PWD:$PWD/tests" .venv/bin/python tests/dashboard_flow.py
+PYTHONPATH="$PWD:$PWD/tests" .venv/bin/python tests/inventory_failure_flow.py
 PYTHONPATH="$PWD:$PWD/tests" .venv/bin/python tests/layout_flow.py
 .venv/bin/python tests/virtual_layout.py
 ```
 
-The native flow exercises actual GTK controls, process details, pause/resume, saved-preference readback, a narrow window, 2,000 fixture processes, identity-safe selection, and clean close. The layout flow checks 1280×800 and 600×700 logical pixels, light/dark appearance, grouping/expansion, stable focus, minimize/restore, and shutdown. The 200% check uses a disposable Xvfb display to test the requested logical window dimensions independently of the physical monitor size. It requires a project-local `.native/usr/bin/Xvfb` and libXfont2, extracted from Ubuntu's `xvfb`, `xserver-common`, and `libxfont2` packages. This changes no host display settings and opens no TCP listener. Its screenshots are saved under `/tmp/workstation-monitor-*`; the displayed process names are fixtures, not the user's running app inventory. Hardware values remain live. These are automated native checks and visual inspection, not a human usability study.
+The native flow exercises actual GTK controls, process details, pause/resume, saved-preference readback, a narrow window, 2,000 fixture processes, identity-safe selection, and clean close. The dashboard flow checks capacity/free space, distinct GPU utilization/VRAM, temperatures, both network directions, focused app identity, resource links, pause consistency, unavailable/stale GPU fields, narrow Overview, and scroll stability. Its dashboard screenshots use synthetic measurements and app names. The layout flow checks 1280×800 and 600×700 logical pixels, light/dark appearance, grouping/expansion, stable focus, minimize/restore, and shutdown.
+
+The 200% check uses a disposable Xvfb display to test the requested logical window dimensions independently of the physical monitor size. It requires a project-local `.native/usr/bin/Xvfb` and libXfont2, extracted from Ubuntu's `xvfb`, `xserver-common`, and `libxfont2` packages. This changes no host display settings and opens no TCP listener. Screenshots are saved under `/tmp/workstation-monitor-*`; process names are fixtures. The layout flow's hardware values remain live. These are automated native checks and visual inspection, not a human usability study.
+
+The inventory-failure flow injects a failure through a real system worker, then checks unknown counts and retained app identities, last-observed detail timestamps, an independently updating GPU, a recovery snapshot, and a separately confirmed exit. Retained row/member actions must open the latest observed values with their matching timestamp. It also checks the unavailable dashboard at narrow width; the virtual-display runner repeats this at 200% scaling.
 
 ## End-to-end overhead and retention
 

@@ -23,7 +23,8 @@ def percentile(values, percent):
 def source_hash():
     root = Path(__file__).resolve().parents[1]
     digest = hashlib.sha256()
-    for path in sorted((root / 'workstation_monitor').glob('*.py')) + [root / 'run.sh']:
+    runtime = root / 'workstation_monitor'
+    for path in sorted(runtime.glob('*.py')) + sorted(runtime.glob('*.css')) + [root / 'run.sh']:
         digest.update(path.name.encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
@@ -112,7 +113,7 @@ def main():
                 gpu.append(gpu_frame.duration_ms)
             if elapsed >= warmup:
                 models.append(w.model_ms)
-                draws.extend(card.chart.draw_ms for card in w.cards.values())
+                draws.extend(card.chart.draw_ms for card in w.cards.values() if hasattr(card, 'chart'))
             samples.append({
                 'elapsed': round(elapsed, 3),
                 'cpu_total_percent': p.cpu_percent() / cpu_count,

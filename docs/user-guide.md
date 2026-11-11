@@ -2,9 +2,9 @@
 
 ## Find what is busy
 
-Start with **Overview**. The CPU and memory percentages describe your whole computer. GPU utilization describes the device; VRAM consumption is a separate measurement. Storage shows a named physical drive, and Network names the interface whose receive rate it shows. Select a card to see all related measurements in **Performance**.
+Start with **Overview**. Its wide CPU timeline shows up to five minutes of whole-machine activity. The panels below show memory, GPU utilization, filesystem capacity/free space, temperatures, and both network directions for the named interface. Select a resource panel to see related measurements in **Performance**. The CPU temperature opens **Sensors**; the GPU temperature opens **GPU**.
 
-The five busiest apps appear below the cards. Choose **Highest CPU** or **Highest memory**, then select an app to inspect its group and member processes. **Apps** groups processes only where desktop identity metadata supports the relationship. Other processes remain individually accessible. Matching executable names alone do not create a group. A group name can appear more than once when separate desktop scopes identify separate launches.
+The three busiest apps appear in aligned **App**, **CPU**, and **Memory (RSS)** columns. Choose **Highest CPU** or **Highest memory**, select a row to inspect its details, or choose **View all apps** for the full list. Row identity stays stable while a row has keyboard focus. **Apps** groups processes only where desktop identity metadata supports the relationship. Other processes remain individually accessible. Matching executable names alone do not create a group. A group name can appear more than once when separate desktop scopes identify separate launches.
 
 Use **Processes** for the full visible inventory. Search by name or PID, choose a numeric sort, or enable **My processes**. Select a row and press Enter, or select **View details**. In Apps, the arrow expands member processes. Ctrl+F focuses the search box. Escape closes detail and settings windows.
 
@@ -14,9 +14,9 @@ Values update while you read. The table holds row order while it has keyboard fo
 
 **Pause display** freezes visible values and shows their snapshot time. Collection continues in memory. **Resume display** jumps to current data rather than replaying old updates.
 
-Open **Settings** with the gear button to choose a 1-, 2-, or 5-second interval and System, Light, or Dark appearance. **Save settings** persists only these preferences. Minimized or hidden windows collect no faster than every five seconds. Closing the app stops collection.
+Open **Settings** with the gear button to choose a 1-, 2-, or 5-second interval and System, Light, or Dark appearance. New installations use the graphite Dark appearance; previously saved choices are respected. **Save settings** persists only these preferences. Minimized or hidden windows collect no faster than every five seconds. Closing the app stops collection.
 
-At narrow widths, the navigation sidebar becomes a destination selector. Secondary process columns move into details. Essential controls, CPU, and memory remain reachable. Graphs have numeric values and units so color is not the only way to understand them.
+At narrow widths, the icon-and-label sidebar becomes a destination selector and Overview's panels form one column. Scroll vertically to reach the remaining summaries and app rows. Secondary process columns move into details. Graphs have numeric values and units so color is not the only way to understand them.
 
 ## Read the measurements correctly
 
@@ -25,12 +25,12 @@ At narrow widths, the navigation sidebar becomes a destination selector. Seconda
 | CPU % | Percentage of the entire machine's capacity. For example, on a 20-logical-CPU host, one fully occupied logical CPU is about 5%. |
 | RAM used | OS-usable total minus available RAM. Cache and swap are shown separately; cache is not assigned to an app. |
 | Memory · RSS | Process resident memory. Summed group RSS can count shared pages more than once and need not add up to system-used RAM. |
-| GPU | Device utilization (%), VRAM used/total, temperature (°C), and power (W) are separate readings. Process VRAM is shown only where the driver supports attribution. |
-| Storage | Physical-drive read/write bytes per second and operations per second. Partition traffic is not added again. Filesystem used/available capacity is separate. Process disk values are kernel-accounted storage I/O, not every application file operation. |
+| GPU | The large percentage and bar show device utilization; the labeled VRAM used/total is a separate reading. Temperature (°C) and power (W) are available in GPU details. Process VRAM is shown only where the driver supports attribution. |
+| Storage | Overview shows the root filesystem's used percentage and free bytes, or a clearly named local filesystem when root is absent. An unreadable root remains unavailable. The capacity bar turns amber at 90% used. Performance shows physical-drive read/write rates and operations separately; partition traffic is not added again. Process disk values are kernel-accounted storage I/O, not every file operation. |
 | Network | Receive/send throughput for the selected interface in KiB/s or MiB/s. Reported link capacity uses Mbit/s. This is not an internet speed test or per-app bandwidth measurement. |
-| Sensors | Named readings actually reported by hardware. Missing fan speed or temperature is not inferred. |
+| Sensors | Named readings actually reported by hardware. Overview's CPU temperature uses an identifiable CPU package/core sensor; it never substitutes a drive or ACPI reading. GPU temperature comes from the same GPU as its utilization. Missing fan speed or temperature is not inferred. |
 
-Byte sizes use B, KiB, MiB, GiB, and TiB. Graphs cover up to five minutes from this session. CPU/percentage scales stay at 0–100%; other scales adapt and show their upper value. Missing intervals remain gaps. No session history is saved to disk. Only the currently inspected process can retain a recent detail history.
+Byte sizes use B, KiB, MiB, GiB, and TiB. Graphs cover up to five minutes from this session. CPU/percentage scales stay at 0–100%; other scales adapt and show their units and upper value. Network receive uses a solid mint line and send a dashed blue line, with separate labeled numbers; they share one scale. Missing intervals remain gaps. No session history is saved to disk. Only the currently inspected process can retain a recent detail history.
 
 ## Understand missing data
 
@@ -39,7 +39,7 @@ Byte sizes use B, KiB, MiB, GiB, and TiB. Graphs cover up to five minutes from t
 | Measuring… | Wait for the next valid sample. A counter reset, new device, CPU-count change, or resume can require a fresh baseline. |
 | Permission denied | The current user cannot read that field. Other values stay visible; the app does not request root access. |
 | Unsupported | The provider or driver does not support that measurement. |
-| Unavailable | The source could not return a measurement. Other providers continue working. |
+| Unavailable | The source could not return a measurement. Other providers continue working. A failed system sample leaves process counts/current app values unavailable; it does not establish an exit. Retained detail values show their last successful observation time. |
 | Stale | Two scheduled intervals were missed. Last-good values are marked with their last successful update time. |
 | Partial | A group subtotal excludes unreadable member values. It is not a complete app total. |
 | Disconnected / Exited | The device or process is gone; old counters are not followed as a replacement's measurements. |

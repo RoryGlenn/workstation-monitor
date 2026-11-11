@@ -1,10 +1,43 @@
-# Workstation Monitor 0.1.0 validation
+# Workstation Monitor validation
+
+## Sleek dark dashboard — 2026-11-11
+
+The [dashboard change](../openspec/changes/adopt-sleek-dark-interface/tasks.md) implements the selected graphite-and-mint design with a wide CPU timeline, filesystem capacity/free space, separate GPU utilization/VRAM, CPU/GPU temperatures, bidirectional network history, and three aligned app rows. The [user guide](user-guide.md) describes the working controls and measurement states.
+
+Validation on the installed GTK baseline:
+
+- All 26 core/provider tests passed, including three dashboard source-selection cases for failed root capacity, GPU identity isolation, and identifiable CPU temperature.
+- Native app and dashboard flows passed: resource links, app/process details, pause/resume, saved settings and fresh-process restart, focused row identity, exited/partial app rows, unavailable/stale GPU values, and scroll preservation.
+- Desktop/narrow views at 1280×800 and 600×700 logical pixels were inspected. Light/dark layouts and the dashboard at 200% scaling passed on an isolated X11 display. The capture fixtures use synthetic app names; dashboard fixtures also use synthetic measurements.
+- Corrupt preferences, denied fields, slow/failed GPU recovery, and IP-socket-denied operation passed. No active GPU workload was restarted or stressed.
+- Three fresh warm-cache launches reached a usable window in 0.89–0.93 seconds and valid rates in 1.61–1.65 seconds. The 2,000-process native search/sort fixture passed below the 200 ms target.
+- Python compilation, relative documentation links, final diff inspection, and strict OpenSpec validation passed.
+- The installed user-local desktop command opened the redesigned, ordinary-user window. Two successive local captures showed changing CPU/GPU/network readings and an advancing last-sample timestamp with both providers Live. Captures and launch diagnostics remain ignored local artifacts.
+
+Pre-publication review also exercised real system-worker failure and recovery. The native regression verifies unavailable process counts and app values, retained observation timestamps, an independently updating GPU, and an exit confirmed by a successful inventory. It also verifies that a retained app/member opens with its latest observed values and matching timestamp, rather than an older process object captured by the member button. The unavailable layout passed at narrow width and 200% scaling.
+
+### Short live overhead comparison
+
+Both runs used the native Overview, Cairo, one-second refresh, the same default window size, a five-second warm-up, and approximately 30 measured seconds. This was a live workstation, not a fixed workload: the inventory changed from 542–543 to 577–587 processes. Results include the full application process and benchmark instrumentation; they do not establish a UI-only cost difference or a renewed ten-minute/30-minute acceptance result.
+
+| Measurement | Before | Sleek dark |
+| --- | --- | --- |
+| Process CPU, whole-machine capacity | 0.674% | 0.780% |
+| Peak process RSS | 116.34 MiB | 132.52 MiB |
+| System collection p95 | 192.62 ms | 202.96 ms |
+| Overview grouping/sort p95 | 11.17 ms | 10.12 ms |
+| Main-thread update p95, including model/widget work | 36.29 ms | 43.06 ms |
+| Curve callback p95, excluding compositor | 0.061 ms | 0.354 ms |
+
+Both runtime source hashes stayed unchanged during their measured run. The new hash includes stylesheets. This comparison preceded the final retained-observation corrections. Raw diagnostic files remain local and ignored: `artifacts/sleek-before.json` and `artifacts/sleek-after-final.json`. Histories had not filled five minutes in these short runs. The initial long retention run below predates this dashboard and was not repeated; no new long-duration memory-growth claim is made.
+
+## Initial 0.1.0 release
 
 The initial implementation passed 23 core/provider tests, native GTK flows, offline/failure checks, layout inspection, and a measured 30-minute retention run after a five-minute warm-up. All 32 implementation tasks in the [OpenSpec change](../openspec/changes/build-local-task-manager/tasks.md) are complete.
 
 The compatibility baseline was Ubuntu 24.04 GNOME/X11, Python 3.12, GTK 4.14, libadwaita 1.5, PyGObject 3.48, and psutil 5.9. Hardware identities, workstation captures, absolute home paths, raw samples, and diagnostic traces are not distributed in the public repository.
 
-## Representative development results
+## Initial release measurements
 
 These observations describe one development run, not a performance guarantee for every machine or view. Reproduce the measurements on the intended host using [the test instructions](../tests/README.md).
 
@@ -22,7 +55,7 @@ These observations describe one development run, not a performance guarantee for
 
 The native inventory fixture does not establish live-system performance at that process count. Main-thread update timing includes model work; curve-drawing timing excludes compositor work. Process CPU/RSS includes worker threads and benchmark instrumentation. Startup and steady-state costs were measured separately. No GPU stress workload or active-job restart was used.
 
-## Native and failure checks
+## Initial release native and failure checks
 
 - Overview-to-resource navigation, process search/details, numeric sorting, app expansion, stable focus/selection, frozen-view navigation, pause/resume, preference readback in a fresh process, and clean shutdown passed.
 - Wide and narrow layouts at 1280×800 and 600×700 logical pixels passed in light/dark appearance. The 200% check used a disposable virtual X11 display rather than changing host display settings.
@@ -39,7 +72,7 @@ Profiling the large native inventory fixture identified costly per-cell widget s
 
 Matched short diagnostic runs motivated using Cairo with unused GL/Vulkan backends disabled. GPU monitoring remains active. Those short runs motivated the renderer configuration rather than establishing a general end-to-end speedup.
 
-## Requirement coverage
+## Initial release requirement coverage
 
 | Capability / requirement | Verification |
 | --- | --- |
@@ -79,6 +112,8 @@ Matched short diagnostic runs motivated using Cairo with unused GL/Vulkan backen
 ## Publication review
 
 The public tree includes portable source, tests, documentation, and OpenSpec artifacts. Local environments, native binaries, caches, agent tooling, screenshots, settings, raw benchmark files, logs, and traces remain ignored. Follow the [publication checklist](publishing.md) before future pushes.
+
+For the dashboard delivery, an explicit 55-file text/source export and existing committed history passed local Gitleaks 8.30.1 scans. A separate source review checked private home paths, private-network addresses, hardware identifiers, personal email addresses, binaries, staged names, and documentation links. Generated mockups, workstation captures, configuration, and raw diagnostics were excluded.
 
 ## Release boundaries
 

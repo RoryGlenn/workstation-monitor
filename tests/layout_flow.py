@@ -22,8 +22,8 @@ with tempfile.TemporaryDirectory() as config:
     w=app.window;pump(2.5)
     class Recorder:
         def __init__(self):self.data=False;self.operations=[]
-        def set_source_rgba(self,*color):self.data=color[0]==.24
-        def set_line_width(self,*args):pass
+        def set_source_rgba(self,*color):pass
+        def set_line_width(self,width):self.data=width==2
         def move_to(self,*point):
             if self.data:self.operations.append('move')
         def line_to(self,*point):
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as config:
     w.set_default_size(600,700);pump(.7)
     if os.environ.get('MONITOR_VIRTUAL_DISPLAY'):
         w.set_default_size(600+(600-w.get_width()),700+(700-w.get_height()));pump(.4)
-    assert (w.get_width(),w.get_height())==(600,700)
+    assert (w.get_width(),w.get_height())==(600,700),(w.get_width(),w.get_height())
     assert w.nav_dropdown.get_visible() and not w.sidebar.get_visible()
     assert all(column.get_visible()==(field in ('name','cpu','rss')) for field,column in w.apps.columns)
     output=f'/tmp/workstation-monitor-dark-{os.environ.get("GDK_SCALE","1")}x-narrow.png'

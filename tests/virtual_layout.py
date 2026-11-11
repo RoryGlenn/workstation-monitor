@@ -13,10 +13,12 @@ try:
     number=server.stdout.readline().strip()
     if not number.isdigit():
         raise SystemExit('Virtual X11 display failed: '+server.stderr.read())
-    result=subprocess.run([sys.executable,str(root/'tests/layout_flow.py')],
-        env=dict(env,DISPLAY=':'+number,GDK_SCALE='2',MONITOR_VIRTUAL_DISPLAY='1',
-                 PYTHONPATH=str(root)+':'+str(root/'tests')))
-    raise SystemExit(result.returncode)
+    for flow in ('layout_flow.py', 'dashboard_flow.py', 'inventory_failure_flow.py'):
+        result=subprocess.run([sys.executable,str(root/'tests'/flow)],
+            env=dict(env,DISPLAY=':'+number,GDK_SCALE='2',MONITOR_VIRTUAL_DISPLAY='1',
+                     PYTHONPATH=str(root)+':'+str(root/'tests')))
+        if result.returncode:
+            raise SystemExit(result.returncode)
 finally:
     server.terminate()
     server.wait(timeout=5)

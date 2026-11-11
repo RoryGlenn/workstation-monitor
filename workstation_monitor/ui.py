@@ -4,114 +4,18 @@ from datetime import datetime
 import os
 import time
 
-from .native import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
+from .native import Adw, Gdk, Gio, GLib, Gtk, Pango
 from .model import AppGroup, Metric, Value, formatted, groups, size, stale
 from .session import Session
+from .theme import Theme
+from .presentation import cpu_temperature, filesystem_summary, gpu_summary, missing
+from .widgets import (AppSummaryRow, Chart, CpuPanel, MetricCard, NetworkPanel, SummaryPanel,
+                      TemperaturePanel, app_columns, label, margins, symbolic_icon)
 from .settings import Settings
 
 
 CPU_HELP = "CPU uses whole-machine capacity: one busy logical CPU on a 20-CPU machine is about 5%."
 RSS_HELP = "RSS is resident memory. Group totals sum process RSS; shared pages can be counted more than once."
-
-
-def label(text="", css=None, xalign=0):
-    widget = Gtk.Label(label=text, xalign=xalign)
-    widget.set_wrap(True)
-    if css:
-        widget.add_css_class(css)
-    return widget
-
-
-def margins(widget, value):
-    for side in ("top", "bottom", "start", "end"):
-        getattr(widget, f"set_margin_{side}")(value)
-
-
-class Chart(Gtk.DrawingArea):
-    def __init__(self):
-        super().__init__()
-        self.set_content_height(74)
-        self.set_hexpand(True)
-        self.points = ()
-        self.unit = "%"
-        self.scale = 100
-        self.now = time.monotonic()
-        self.set_draw_func(self.draw)
-        self.draw_ms = 0
-
-    def update(self, points, unit, now):
-        self.points = tuple(points)
-        self.unit, self.now = unit, now
-        self.scale = 100 if unit == "%" else max([p[1] for p in self.points if p[1] is not None] + [1]) * 1.15
-        self.set_tooltip_text(f"Last five minutes · scale 0–{formatted(Value.ok(self.scale), unit)}. Gaps are missing data.")
-        self.queue_draw()
-
-    def draw(self, area, cr, width, height):
-        started = time.perf_counter()
-        cr.set_source_rgba(.45, .52, .62, .18)
-        cr.set_line_width(1)
-        for fraction in (.25, .5, .75, 1):
-            cr.move_to(0, height * fraction)
-            cr.line_to(width, height * fraction)
-        cr.stroke()
-        cr.set_source_rgba(.24, .65, .89, 1)
-        cr.set_line_width(2)
-        previous = None
-        for stamp, number in self.points:
-            if number is None or stamp < self.now - 300:
-                if previous is not None:
-                    cr.stroke()
-                previous = None
-                continue
-            x = width * (1 - (self.now - stamp) / 300)
-            y = height * (1 - max(0, min(1, number / self.scale)))
-            if previous is None or stamp - previous > 12:
-                cr.stroke()
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-            previous = stamp
-        cr.stroke()
-        self.draw_ms = (time.perf_counter() - started) * 1000
-
-
-class MetricCard(Gtk.Box):
-    __gsignals__ = {"clicked": (GObject.SignalFlags.RUN_LAST, None, ())}
-
-    def __init__(self, title, clicked=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.add_css_class("card")
-        self.add_css_class("metric-card")
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        margins(self.box, 14)
-        self.heading = label(title, "heading")
-        self.number = label("Measuring…", "title-2")
-        self.detail = label("", "dim-label")
-        self.chart = Chart()
-        self.scale_label = label("0–100% · last 5 min", "caption")
-        for widget in (self.heading, self.number, self.detail, self.chart, self.scale_label):
-            self.box.append(widget)
-        if clicked:
-            self.add_css_class("clickable")
-            action = Gtk.Button()
-            action.add_css_class("flat")
-            action.add_css_class("metric-action")
-            action.set_child(self.box)
-            action.connect("clicked", lambda _: self.emit("clicked"))
-            self.append(action)
-            self.connect("clicked", lambda _: clicked())
-        else:
-            self.append(self.box)
-        self.metric = None
-
-    def update(self, metric, history, now, status=""):
-        self.metric = metric
-        self.heading.set_label(metric.title)
-        text = formatted(metric.value, metric.unit)
-        self.number.set_label(text)
-        self.detail.set_label(status or metric.detail)
-        self.chart.update(history, metric.unit, now)
-        self.scale_label.set_label(f"0–{formatted(Value.ok(self.chart.scale), metric.unit)} · last 5 min")
 
 
 class Row:
@@ -256,7 +160,7 @@ class ProcessTable(Gtk.Box):
     def activate(self, view, position):
         row = self.store.get_item(position)
         if row:
-            self.window.show_details(row.data)
+            self.window.show_details(row.data, observed_at=self.frame.wall_time)
 
     def update(self, frame):
         started = time.perf_counter()
@@ -334,7 +238,8 @@ class ProcessTable(Gtk.Box):
         self.visible_order = new_order
         self.rendered_cache = {row.key: values for values, row in rendered}
         self.expanded.intersection_update(fresh)
-        self.count.set_label(f"{len(data):,} {'apps / groups' if self.app_view else 'processes'} · read-only")
+        self.count.set_label(f"{len(data):,} {'apps / groups' if self.app_view else 'processes'} · read-only"
+                             if frame.status == "Available" else "Process inventory unavailable · read-only")
         self.model_ms = (time.perf_counter() - started) * 1000
 
     def narrow(self, value):
@@ -356,6 +261,7 @@ class MonitorWindow(Adw.ApplicationWindow):
         self.frozen_history = {}
         self.display_frame = None
         self.display_gpu = None
+        self.inventory_observed_at = None
         self.presented = None
         self.dialog = None
         self.detail_identity = None
@@ -372,43 +278,85 @@ class MonitorWindow(Adw.ApplicationWindow):
         self.connect("close-request", self.close_monitor)
 
     def build(self):
+        self.add_css_class("workstation-monitor")
+        self.theme = Theme(self.get_display())
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         header = Adw.HeaderBar()
-        header.set_title_widget(Adw.WindowTitle(title="Workstation Monitor", subtitle="Live on this computer"))
+        header.set_title_widget(Gtk.Box())
+        brand = Gtk.Box(spacing=10)
+        brand.append(symbolic_icon("utilities-system-monitor-symbolic"))
+        brand.append(label("Workstation Monitor", "brand"))
+        header.pack_start(brand)
+        root.append(header)
+        body = Gtk.Box(vexpand=True)
+        self.sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.sidebar.set_size_request(180, -1)
+        self.sidebar.add_css_class("monitor-sidebar")
+        self.nav_buttons = {}
+        for name, title, icon in (("overview", "Overview", "view-grid-symbolic"),
+                                  ("apps", "Apps", "application-x-executable-symbolic"),
+                                  ("processes", "Processes", "view-list-symbolic"),
+                                  ("performance", "Performance", "utilities-system-monitor-symbolic")):
+            button = Gtk.ToggleButton()
+            button.add_css_class("flat")
+            button.add_css_class("monitor-nav")
+            content = Gtk.Box(spacing=12)
+            content.append(symbolic_icon(icon))
+            content.append(label(title))
+            button.set_child(content)
+            button.update_property([Gtk.AccessibleProperty.LABEL], [title])
+            button.connect("clicked", lambda _, name=name: self.navigate(name))
+            self.sidebar.append(button)
+            self.nav_buttons[name] = button
+        body.append(self.sidebar)
+        main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
+        page_header = Gtk.Box(spacing=10)
+        margins(page_header, 16)
+        self.page_heading = label("Overview", "page-heading")
+        self.page_heading.set_wrap(False)
+        self.page_heading.set_hexpand(True)
+        page_header.append(self.page_heading)
+        self.live_status = label("Measuring…", "monitor-status")
+        self.live_status.set_wrap(False)
+        self.live_status.set_valign(Gtk.Align.CENTER)
+        page_header.append(self.live_status)
         self.pause_button = Gtk.ToggleButton(label="Pause display")
+        self.pause_button.set_valign(Gtk.Align.CENTER)
         self.pause_button.set_tooltip_text("Freeze visible values. Collection continues until the app closes.")
         self.pause_button.connect("toggled", self.toggle_pause)
-        header.pack_start(self.pause_button)
+        page_header.append(self.pause_button)
         self.preferences_button = Gtk.Button(icon_name="emblem-system-symbolic", tooltip_text="Settings")
+        self.preferences_button.set_valign(Gtk.Align.CENTER)
         self.preferences_button.update_property([Gtk.AccessibleProperty.LABEL], ["Settings"])
         self.preferences_button.connect("clicked", self.show_settings)
-        header.pack_end(self.preferences_button)
-        root.append(header)
-        self.banner = label(self.settings.warning, "warning")
-        margins(self.banner, 6)
+        page_header.append(self.preferences_button)
+        main.append(page_header)
+        self.banner = label(self.settings.warning, "monitor-banner")
         self.banner.set_visible(bool(self.settings.warning))
-        root.append(self.banner)
-        self.stack = Gtk.Stack(hexpand=True, vexpand=True)
-        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.stack.set_transition_duration(120)
-        self.sidebar = Gtk.StackSidebar(stack=self.stack)
-        self.sidebar.set_size_request(160, -1)
-        self.sidebar.add_css_class("navigation-sidebar")
+        main.append(self.banner)
         self.nav_dropdown = Gtk.DropDown.new_from_strings(["Overview", "Apps", "Processes", "Performance"])
         self.nav_dropdown.update_property([Gtk.AccessibleProperty.LABEL], ["Destination"])
-        self.nav_dropdown.set_margin_start(12)
-        self.nav_dropdown.set_margin_end(12)
+        self.nav_dropdown.set_margin_start(16)
+        self.nav_dropdown.set_margin_end(16)
+        self.nav_dropdown.set_margin_bottom(12)
         self.nav_dropdown.connect("notify::selected", lambda *_: self.navigate(
             ("overview", "apps", "processes", "performance")[self.nav_dropdown.get_selected()]))
         self.nav_dropdown.set_visible(False)
-        root.append(self.nav_dropdown)
-        body = Gtk.Box()
-        body.append(self.sidebar)
-        body.append(self.stack)
+        main.append(self.nav_dropdown)
+        self.stack = Gtk.Stack(hexpand=True, vexpand=True)
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.stack.set_transition_duration(120)
+        main.append(self.stack)
+        footer = Gtk.Box(spacing=16)
+        footer.add_css_class("monitor-footer")
+        footer.append(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        footer.append(label("Local monitoring"))
+        self.footer = label("Starting collectors…", xalign=1)
+        self.footer.set_hexpand(True)
+        footer.append(self.footer)
+        main.append(footer)
+        body.append(main)
         root.append(body)
-        self.footer = label("Starting local collectors…", "caption")
-        margins(self.footer, 8)
-        root.append(self.footer)
         self.set_content(root)
         self.build_overview()
         self.apps = ProcessTable(self, True)
@@ -418,45 +366,78 @@ class MonitorWindow(Adw.ApplicationWindow):
             self.stack.add_titled(widget, name, title)
         self.build_performance()
         self.stack.connect("notify::visible-child-name", self.page_changed)
-        self.navigate("overview")
+        self.page_changed()
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.key_pressed)
         self.add_controller(keys)
-        css = Gtk.CssProvider()
-        css.load_from_data(b".metric-card, .metric-action { padding: 0; border-radius: 12px; } .numeric { font-variant-numeric: tabular-nums; } .hero { font-size: 26px; font-weight: 700; } .resource-note { font-size: 12px; } .metric-card.clickable:hover { outline: 1px solid alpha(@accent_color,.6); }")
-        Gtk.StyleContext.add_provider_for_display(self.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
     def build_overview(self):
-        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        margins(page, 22)
-        page.append(label("Your workstation, at a glance", "hero"))
-        page.append(label("Follow a resource to see what is using it.", "dim-label"))
-        self.overview_grid = Gtk.Grid(column_spacing=14, row_spacing=14, column_homogeneous=True)
-        for i, (key, title, category) in enumerate((("cpu", "CPU", "CPU"), ("memory", "Memory", "Memory"),
-                ("gpu", "GPU", "GPU"), ("disk", "Storage", "Storage"), ("network", "Network", "Network"))):
-            card = MetricCard(title, lambda c=category: self.open_resource(c))
-            self.cards[key] = card
-            self.overview_grid.attach(card, i % 3, i // 3, 1, 1)
-        page.append(self.overview_grid)
+        self.overview_grid = Gtk.Grid(column_spacing=12, row_spacing=12, column_homogeneous=True)
+        margins(self.overview_grid, 16)
+        self.overview_grid.set_margin_top(0)
+        self.cards = {
+            "cpu": CpuPanel(lambda: self.open_resource("CPU")),
+            "memory": SummaryPanel("Memory", lambda: self.open_resource("Memory")),
+            "gpu": SummaryPanel("GPU", lambda: self.open_resource("GPU")),
+            "disk": SummaryPanel("Storage", lambda: self.open_resource("Storage")),
+            "network": NetworkPanel(lambda: self.open_resource("Network")),
+        }
+        self.cards["cpu"].set_tooltip_text(CPU_HELP)
+        self.temperatures = TemperaturePanel(lambda: self.open_resource("Sensors"), lambda: self.open_resource("GPU"))
+        self.app_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.app_panel.add_css_class("monitor-panel")
         top_header = Gtk.Box(spacing=12)
-        top_header.append(label("Apps using resources", "title-3"))
+        top_header.add_css_class("apps-heading-row")
+        title = label("Apps using resources", "panel-heading")
+        title.set_hexpand(True)
+        top_header.append(title)
         self.top_sort = Gtk.DropDown.new_from_strings(["Highest CPU", "Highest memory"])
         self.top_sort.update_property([Gtk.AccessibleProperty.LABEL], ["Rank high-usage apps by"])
         self.top_sort.connect("notify::selected", lambda *_: self.update_overview() if self.display_frame else None)
         top_header.append(self.top_sort)
-        page.append(top_header)
+        self.view_all_apps = Gtk.Button(label="View all apps")
+        self.view_all_apps.add_css_class("flat")
+        self.view_all_apps.add_css_class("monitor-link")
+        self.view_all_apps.connect("clicked", lambda _: self.navigate("apps"))
+        top_header.append(self.view_all_apps)
+        self.app_panel.append(top_header)
+        name = label("App")
+        name.set_margin_start(28)
+        columns = app_columns(name, label("CPU"), label("Memory (RSS)"))
+        columns.add_css_class("apps-column-heading")
+        columns.set_tooltip_text(CPU_HELP+"\n"+RSS_HELP)
+        self.app_panel.append(columns)
         self.top_buttons = []
         self.top_groups = []
-        for i in range(5):
-            button = Gtk.Button()
-            button.add_css_class("flat")
-            button.connect("clicked", lambda _, i=i: self.show_details(self.top_groups[i]) if i < len(self.top_groups) else None)
+        for _ in range(3):
+            button = AppSummaryRow(self.show_details)
             self.top_buttons.append(button)
-            page.append(button)
-        page.append(label("Local and read-only · No measurements are saved to disk · CPU is whole-machine %", "caption"))
-        scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
-        scroll.set_child(page)
-        self.stack.add_titled(scroll, "overview", "Overview")
+            self.app_panel.append(button)
+        self.apps_empty = label("Waiting for app measurements…", "monitor-caption")
+        margins(self.apps_empty, 12)
+        self.app_panel.append(self.apps_empty)
+        self.overview_scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+        # Allow a wide grid to shrink first; the next layout tick stacks it.
+        # NEVER would turn the three-column grid into the window's minimum width.
+        self.overview_scroll.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.AUTOMATIC)
+        self.overview_scroll.set_child(self.overview_grid)
+        self.layout_overview(False)
+        self.stack.add_titled(self.overview_scroll, "overview", "Overview")
+
+    def layout_overview(self, narrow):
+        widgets = list(self.cards.values())+[self.temperatures, self.app_panel]
+        for widget in widgets:
+            if widget.get_parent() == self.overview_grid:
+                self.overview_grid.remove(widget)
+        if narrow:
+            for i, widget in enumerate(widgets):
+                self.overview_grid.attach(widget, 0, i, 1, 1)
+        else:
+            for key, x, y, width, height in (("cpu", 0, 0, 3, 1), ("memory", 0, 1, 1, 1),
+                    ("gpu", 1, 1, 1, 1), ("disk", 0, 2, 1, 1), ("network", 2, 1, 1, 2)):
+                self.overview_grid.attach(self.cards[key], x, y, width, height)
+            self.overview_grid.attach(self.temperatures, 1, 2, 1, 1)
+            self.overview_grid.attach(self.app_panel, 0, 3, 3, 1)
 
     def build_performance(self):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -488,10 +469,15 @@ class MonitorWindow(Adw.ApplicationWindow):
 
     def navigate(self, name):
         self.stack.set_visible_child_name(name)
+        for key, button in self.nav_buttons.items():
+            button.set_active(key == name)
 
     def page_changed(self, *_):
         name = self.stack.get_visible_child_name()
         index = ("overview", "apps", "processes", "performance").index(name)
+        self.page_heading.set_label(("Overview", "Apps", "Processes", "Performance")[index])
+        for key, button in self.nav_buttons.items():
+            button.set_active(key == name)
         if self.nav_dropdown.get_selected() != index:
             self.nav_dropdown.set_selected(index)
         self.presented = None
@@ -519,10 +505,7 @@ class MonitorWindow(Adw.ApplicationWindow):
             self.nav_dropdown.set_visible(narrow)
             self.apps.narrow(narrow)
             self.processes.narrow(narrow)
-            columns = 1 if narrow else 3
-            for i, card in enumerate(self.cards.values()):
-                self.overview_grid.remove(card)
-                self.overview_grid.attach(card, i % columns, i // columns, 1, 1)
+            self.layout_overview(narrow)
             self.update_performance(True)
         if not self.paused and not self.session.hidden:
             self.render()
@@ -542,6 +525,8 @@ class MonitorWindow(Adw.ApplicationWindow):
             return
         started = time.perf_counter()
         self.display_frame, self.display_gpu = system, gpu
+        if system.status == "Available":
+            self.inventory_observed_at = system.wall_time
         self.presented = token
         names = [n for n, _, _ in system.interfaces]
         if names != self.interface_names:
@@ -564,8 +549,16 @@ class MonitorWindow(Adw.ApplicationWindow):
             self.update_details()
         state = self.provider_state(system)
         gpu_state = self.provider_state(gpu)
-        self.footer.set_label(f"{'Paused snapshot · ' if self.paused else ''}{len(system.processes):,} processes · {state} · Last sample "
-                              f"{datetime.fromtimestamp(system.wall_time):%H:%M:%S} · GPU {gpu_state}")
+        badge = "Paused" if self.paused else state.split(" · ")[0]
+        self.live_status.set_label(("● " if badge == "Live" else "")+badge)
+        self.live_status.set_tooltip_text(f"{'Paused snapshot · ' if self.paused else ''}System {state} · GPU {gpu_state}")
+        (self.live_status.remove_css_class if badge == "Live" else self.live_status.add_css_class)("warning")
+        display_state = "Paused snapshot" if self.paused else state
+        gpu_display_state = "snapshot" if self.paused and gpu_state == "Live" else gpu_state
+        count = f"{len(system.processes):,} processes" if system.status == "Available" else "Process inventory unavailable"
+        sample_label = "Last sample" if system.status == "Available" else "Last attempt"
+        self.footer.set_label(f"{count} · {display_state} · {sample_label} "
+                              f"{datetime.fromtimestamp(system.wall_time):%H:%M:%S} · GPU {gpu_display_state}")
         self.render_ms = (time.perf_counter() - started) * 1000
 
     def provider_state(self, frame):
@@ -593,33 +586,60 @@ class MonitorWindow(Adw.ApplicationWindow):
     def update_overview(self):
         if not self.display_frame:
             return
-        metrics = self.all_metrics()
-        choices = {"cpu": metrics.get("cpu.total"), "memory": metrics.get("memory.percent"),
-                   "gpu": next((m for k, m in metrics.items() if k.startswith("gpu.") and k.endswith(".util")), None),
-                   "disk": next((m for k, m in metrics.items() if k.startswith("disk.") and k.endswith(".read")), None),
-                   "network": metrics.get(f"net.{self.network_choice}.receive")}
-        for key, metric in choices.items():
-            category = {"cpu": "CPU", "memory": "Memory", "gpu": "GPU", "disk": "Storage", "network": "Network"}[key]
-            metric = metric or Metric(f"missing.{key}", category, Value(None, "Unavailable"), "", category)
-            if key == "memory":
-                used, total = metrics.get("memory.used"), metrics.get("memory.total")
-                if used and total:
-                    metric = Metric(metric.key, metric.title, metric.value, metric.unit, metric.category,
-                                    f"{size(used.value.number)} used of {size(total.value.number)}")
-            state = self.provider_state(self.display_gpu if key == "gpu" else self.display_frame)
-            self.cards[key].update(metric, self.history_points(metric.key), self.chart_now(),
-                                   state if state != "Live" else "")
+        frame, gpu = self.display_frame, self.display_gpu
+        metrics = frame.metrics
+        system_state = self.provider_state(frame)
+        gpu_state = self.provider_state(gpu)
+        system_state = "" if system_state == "Live" else system_state
+        gpu_state = "" if gpu_state == "Live" else gpu_state
+        now = self.chart_now()
+        cpu = metrics.get("cpu.total", missing("cpu.total", "CPU", "%", "CPU"))
+        self.cards["cpu"].update(cpu, self.history_points(cpu.key), now, system_state)
+        memory = metrics.get("memory.percent", missing("memory.percent", "Memory", "%", "Memory"))
+        used, total = metrics.get("memory.used"), metrics.get("memory.total")
+        memory_detail = (f"{formatted(used.value, 'bytes')} / {formatted(total.value, 'bytes')}"
+                         if used and total else "Capacity unavailable")
+        self.cards["memory"].update(memory, memory_detail, "Used / total RAM", system_state)
+        device = gpu_summary(gpu)
+        vram = f"{formatted(device['used'].value, 'bytes')} / {formatted(device['total'].value, 'bytes')}"
+        self.cards["gpu"].update(device["util"], vram, "GPU utilization · VRAM used / total", gpu_state)
+        storage, free, mount = filesystem_summary(frame)
+        self.cards["disk"].update(storage, f"{size(free)} free" if free is not None else "Free space unavailable",
+                                  f"Filesystem {mount}" if mount.startswith("/") else mount,
+                                  system_state, suffix=" used")
+        (self.cards["disk"].bar.add_css_class if storage.value.number is not None and storage.value.number >= 90
+            else self.cards["disk"].bar.remove_css_class)("warning")
+        receive_key = f"net.{self.network_choice}.receive"
+        send_key = f"net.{self.network_choice}.send"
+        receive = metrics.get(receive_key, missing(receive_key, "Receive", "bytes/s", "Network"))
+        send = metrics.get(send_key, missing(send_key, "Send", "bytes/s", "Network"))
+        self.cards["network"].update(receive, send, self.history_points(receive_key), self.history_points(send_key),
+                                     now, self.network_choice or "No interface", system_state)
+        self.temperatures.update(cpu_temperature(frame), device["temperature"], system_state, gpu_state)
         field = "cpu" if self.top_sort.get_selected() == 0 else "rss"
         model_started = time.perf_counter()
-        self.top_groups = sorted(groups(self.display_frame.processes),
-                                 key=lambda g: -(getattr(g, field).number or 0))[:5]
-        self.model_ms = (time.perf_counter() - model_started) * 1000
+        ranked = sorted(groups(frame.processes), key=lambda group: -(getattr(group, field).number or 0))
+        self.model_ms = (time.perf_counter()-model_started)*1000
+        focus = self.get_focus()
+        held = focus is not None and any(focus == button or focus.is_ancestor(button) for button in self.top_buttons)
+        inventory_available = frame.status == "Available"
+        if not inventory_available:
+            chosen = self.top_groups
+        elif held and self.top_groups:
+            by_identity = {group.identity: group for group in ranked}
+            chosen = [by_identity.get(group.identity, group) for group in self.top_groups]
+        else:
+            chosen = ranked[:3]
+        self.top_groups = chosen
+        live = {group.identity for group in ranked}
         for i, button in enumerate(self.top_buttons):
-            button.set_visible(i < len(self.top_groups))
-            if i < len(self.top_groups):
-                group = self.top_groups[i]
-                button.set_label(f"{group.name}   ·   {formatted(group.cpu, '%')} CPU   ·   "
-                                 f"{formatted(group.rss, 'bytes')} RSS" + ("   · partial" if group.partial else ""))
+            button.set_visible(i < len(chosen))
+            if i < len(chosen):
+                button.update(chosen[i], exited=inventory_available and chosen[i].identity not in live,
+                              unavailable=not inventory_available, observed_at=frame.wall_time)
+        self.apps_empty.set_visible(not chosen)
+        self.apps_empty.set_label("No readable processes in this snapshot." if inventory_available
+                                  else "App inventory unavailable.")
 
     def update_performance(self, force=False):
         if not self.display_frame:
@@ -661,6 +681,9 @@ class MonitorWindow(Adw.ApplicationWindow):
     def toggle_pause(self, button):
         self.paused = button.get_active()
         button.set_label("Resume display" if self.paused else "Pause display")
+        if self.paused:
+            self.live_status.set_label("Paused")
+            self.live_status.add_css_class("warning")
         self.banner.set_visible(self.paused or bool(self.settings.warning))
         if self.paused:
             self.frozen_history = {key: tuple(points) for key, points in self.session.history.series.items()}
@@ -674,7 +697,7 @@ class MonitorWindow(Adw.ApplicationWindow):
             self.presented = None
             self.render()
 
-    def show_details(self, data):
+    def show_details(self, data, observed_at=None):
         if self.dialog:
             self.dialog.close()
         dialog = Adw.Window(transient_for=self, modal=True, title="App details" if isinstance(data, AppGroup) else "Process details")
@@ -695,7 +718,9 @@ class MonitorWindow(Adw.ApplicationWindow):
         scroll.set_child(box)
         dialog.set_content(scroll)
         self.dialog, self.detail_data = dialog, data
-        self.detail_seen_at = self.display_frame.wall_time if self.display_frame else time.time()
+        self.detail_seen_at = (observed_at if observed_at is not None else self.display_frame.wall_time
+                               if self.display_frame and self.display_frame.status == "Available"
+                               else self.inventory_observed_at)
         self.member_identities = None
         self.detail_identity = data.identity
         if not isinstance(data, AppGroup):
@@ -718,36 +743,46 @@ class MonitorWindow(Adw.ApplicationWindow):
         self.session.history.select(None)
         return False
 
+    def show_member_details(self, identity):
+        if isinstance(self.detail_data, AppGroup):
+            member = next((p for p in self.detail_data.members if p.identity == identity), None)
+            if member:
+                self.show_details(member, observed_at=self.detail_seen_at)
+
     def update_details(self):
         if not self.dialog or not self.display_frame:
             return
         data = self.detail_data
+        inventory_available = self.display_frame.status == "Available"
         snapshot_state = "Paused snapshot" if self.paused else self.provider_state(self.display_frame)
         if isinstance(data, AppGroup):
-            group = next((g for g in groups(self.display_frame.processes) if g.identity == data.identity), None)
+            group = next((g for g in groups(self.display_frame.processes) if g.identity == data.identity),
+                         None) if inventory_available else None
             if group:
                 data = group
                 self.detail_data = data
                 self.detail_seen_at = self.display_frame.wall_time
-            self.detail_text.set_label(f"{data.name}\n{snapshot_state} · Last observed {datetime.fromtimestamp(self.detail_seen_at):%H:%M:%S}\n"
+            observed = datetime.fromtimestamp(self.detail_seen_at).strftime("%H:%M:%S") if self.detail_seen_at is not None else "Unknown"
+            self.detail_text.set_label(f"{data.name}\n{snapshot_state} · Last observed {observed}\n"
                 f"{len(data.members)} member processes\n"
                 f"CPU {formatted(data.cpu, '%')} · RSS {formatted(data.rss, 'bytes')}\n"
                 f"Read {formatted(data.read, 'bytes/s')} · Write {formatted(data.write, 'bytes/s')}\n"
                 f"{'Partial totals: some member measurements are unavailable.' if data.partial else 'Readable member totals.'}\n"
                 f"{RSS_HELP}\nRead-only. Per-app network bandwidth is outside this release."
-                + ("\nThis app group has exited." if group is None else ""))
+                + ("\nThis app group has exited." if group is None and inventory_available else
+                   "\nApp membership unavailable. Showing last observed values." if not inventory_available else ""))
             identities = tuple(m.identity for m in data.members)
             if getattr(self, "member_identities", None) != identities:
                 while child := self.member_box.get_first_child():
                     self.member_box.remove(child)
                 for p in data.members:
                     button = Gtk.Button(label=f"{p.name} · PID {p.pid}")
-                    button.connect("clicked", lambda _, p=p: self.show_details(p))
+                    button.connect("clicked", lambda _, identity=p.identity: self.show_member_details(identity))
                     self.member_box.append(button)
                 self.member_identities = identities
             self.detail_chart.set_visible(False)
         else:
-            current = self.display_frame.processes.get(data.identity)
+            current = self.display_frame.processes.get(data.identity) if inventory_available else None
             data = current or data
             if current:
                 self.detail_data = current
@@ -757,9 +792,12 @@ class MonitorWindow(Adw.ApplicationWindow):
             gpu_state = self.provider_state(self.display_gpu)
             if gpu_amount is not None and gpu_state != "Live":
                 gpu_text += f" · {gpu_state}"
+            process_state = (data.state if current else "Exited — this PID will not be followed if reused."
+                             if inventory_available else "Process state unavailable. Showing last observed values.")
+            observed = datetime.fromtimestamp(self.detail_seen_at).strftime("%H:%M:%S") if self.detail_seen_at is not None else "Unknown"
             self.detail_text.set_label(f"{data.name} · PID {data.pid}\n"
-                f"{snapshot_state} · Last observed {datetime.fromtimestamp(self.detail_seen_at):%H:%M:%S}\n"
-                f"{'Exited — this PID will not be followed if reused.' if current is None else data.state}\n"
+                f"{snapshot_state} · Last observed {observed}\n"
+                f"{process_state}\n"
                 f"Owner {data.owner} · Parent PID {data.parent} · Threads {data.threads}\n"
                 f"Started {datetime.fromtimestamp(data.started):%Y-%m-%d %H:%M:%S}\n\n"
                 f"CPU {formatted(data.cpu, '%')}\nRSS {formatted(data.rss, 'bytes')}\n"
@@ -831,6 +869,7 @@ class MonitorWindow(Adw.ApplicationWindow):
         for child in Gtk.Window.list_toplevels():
             if child.get_transient_for() == self:
                 child.close()
+        self.theme.close(self.get_display())
         return False
 
 
